@@ -9,16 +9,11 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	URL "net/url"
+	Url "net/url"
+	"regexp"
 	"time"
 
 	"github.com/gocolly/colly"
-)
-
-const (
-	blog_api          = "https://blog.csdn.net/community/home-api/v1/get-business-list?page=%d&size=20&businessType=blog&orderby=&noMore=false&username=%s"
-	blog_markdown_api = "https://bizapi.csdn.net/blog-console-api/v3/editor/getArticle?id=%d&model_type="
-	blog_size         = 20
 )
 
 type Blog struct {
@@ -30,6 +25,18 @@ type Blog struct {
 	title      string
 	createTime time.Time
 }
+
+const (
+	blog_api          = "https://blog.csdn.net/community/home-api/v1/get-business-list?page=%d&size=20&businessType=blog&orderby=&noMore=false&username=%s"
+	blog_markdown_api = "https://bizapi.csdn.net/blog-console-api/v3/editor/getArticle?id=%d&model_type="
+	blog_size         = 20
+)
+
+var blog_counter int = 1
+var blogs []*Blog
+var user string
+
+var collector *colly.Collector = colly.NewCollector()
 
 func IntRange(start int, end int, step int) []int {
 	var seq_cap int = (end - start) / step
@@ -63,12 +70,13 @@ func createUuid() string {
 }
 
 func getSign(uuid string, url string) string {
-	u_url, err := URL.Parse(url)
+	u_url, err := Url.Parse(url)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to parse url %s (%s)", url, err))
 	}
 	ekey := []byte("9znpamsyl2c7cdrr9sas0le9vbc3r6ba")
-	url_compnent := u_url.Path + "?" + u_url.RawQuery
+	url_query := u_url.RawQuery
+	url_compnent := u_url.Path + "?" + url_query[0:len(url_query)]
 	fmt.Println(url_compnent)
 	to_enc := []byte(fmt.Sprintf("GET\n*/*\n\n\n\nx-ca-key:203803574\nx-ca-nonce:%s\n%s", uuid, url_compnent))
 	hmac_encoder := hmac.New(sha256.New, ekey)
@@ -80,68 +88,92 @@ func getSign(uuid string, url string) string {
 func crawl_blog_markdown(article_id string) {
 }
 
+func parse_blog_list(resp *colly.Response) {
+	if resp.StatusCode != 200 {
+		tip := fmt.Sprintf("%s's blog list  can't get!", user)
+		panic(tip)
+	}
+	var resp_json map[string]interface{}
+	json.Unmarshal(resp.Body, &resp_json)
+	blog_total, _ := resp_json["data"].(map[string]interface{})["total"].(float64)
+	if blog_total <= 0 {
+		fmt.Println(fmt.Sprintf("No blogs found on user %s.", user))
+	}
+	blog_list, _ := resp_json["data"].(map[string]interface{})["list"].([]interface{})
+	for _, blog := range blog_list {
+		vblog := blog.(map[string]interface{})
+		zblog := &Blog{}
+		id, _ := vblog["articleId"].(float64)
+		title, _ := vblog["title"].(string)
+		postTime, err := time.Parse("2006-01-02 15:04:05", vblog["postTime"].(string))
+		url, _ := vblog["url"].(string)
+		fmt.Println(fmt.Sprintf("Crawl blog %s ( %s ) ...  %d/%d", title, url, int(blog_counter), int(blog_total)))
+		if err != nil {
+			fmt.Printf("Failed to parse blog date (%s)", err)
+			return
+		}
+		zblog.desc = vblog["description"].(string)
+		zblog.id = fmt.Sprintf("%d", int(id))
+		zblog.url = url
+		zblog.title = title
+		zblog.comment = int(vblog["commentCount"].(float64))
+		zblog.view = int(vblog["viewCount"].(float64))
+		zblog.createTime = postTime
+		blogs = append(blogs, zblog)
+		blog_counter += 1
+	}
+	if blog_counter < int(blog_total) {
+		blog_page := int(math.Ceil(float64(blog_counter) / blog_size))
+		total_blog_page := int(math.Ceil(float64(blog_total) / blog_size))
+		blog_url := fmt.Sprintf(blog_api, blog_page, user)
+		fmt.Println(fmt.Sprintf("Crawl user %s blogs ... at page %d/%d", user, blog_page, total_blog_page))
+		collector.Visit(blog_url)
+	}
+}
+
+func parse_blog_markdown(resp *colly.Response) {
+
+}
+
+func parseResponse(resp *colly.Response) error {
+	blog_md_reg, blog_md_reg_err := regexp.Compile(`https?:\/\/blog\.csdn\.net\/community\/home-api\/v1\/get-business-list\?.*`)
+	blog_list_reg, blog_list_reg_err := regexp.Compile(`https?:\/\/bizapi\.csdn\.net\/blog-console-api\/v3\/editor\/getArticle\?.*`)
+	url := resp.Request.URL.String()
+	if blog_md_reg_err != nil {
+		return fmt.Errorf("Failed to compilre regex of blog markdown url regex.")
+	} else if blog_list_reg_err != nil {
+		return fmt.Errorf("Failed to compilre regex of blog list url regex.")
+	}
+	switch url = url; {
+	case blog_list_reg.MatchString(url):
+		parse_blog_list(resp)
+	case blog_md_reg.MatchString(url):
+		parse_blog_markdown(resp)
+	}
+	return nil
+}
+
 func crawl_blog(user string) []*Blog {
 	var blog_counter int = 1
 	blog_url := fmt.Sprintf(blog_api, blog_counter, user)
 	var blogs []*Blog
-	c := colly.NewCollector()
-	c.OnResponse(func(r *colly.Response) {
-		if r.StatusCode != 200 {
-			tip := fmt.Sprintf("%s's blog list  can't get!", user)
-			panic(tip)
-		}
-		var resp_json map[string]interface{}
-		json.Unmarshal(r.Body, &resp_json)
-		blog_total, _ := resp_json["data"].(map[string]interface{})["total"].(float64)
-		if blog_total <= 0 {
-			fmt.Println(fmt.Sprintf("No blogs found on user %s.", user))
-		}
-		blog_list, _ := resp_json["data"].(map[string]interface{})["list"].([]interface{})
-		for _, blog := range blog_list {
-			vblog := blog.(map[string]interface{})
-			zblog := &Blog{}
-			id, _ := vblog["articleId"].(float64)
-			title, _ := vblog["title"].(string)
-			postTime, err := time.Parse("2006-01-02 15:04:05", vblog["postTime"].(string))
-			url, _ := vblog["url"].(string)
-			fmt.Println(fmt.Sprintf("Crawl blog %s ( %s ) ...  %d/%d", title, url, int(blog_counter), int(blog_total)))
-			if err != nil {
-				fmt.Printf("Failed to parse blog date (%s)", err)
-				return
-			}
-			zblog.desc = vblog["description"].(string)
-			zblog.id = fmt.Sprintf("%d", int(id))
-			zblog.url = url
-			zblog.title = title
-			zblog.comment = int(vblog["commentCount"].(float64))
-			zblog.view = int(vblog["viewCount"].(float64))
-			zblog.createTime = postTime
-			blogs = append(blogs, zblog)
-			blog_counter += 1
-		}
-		if blog_counter < int(blog_total) {
-			blog_page := int(math.Ceil(float64(blog_counter) / blog_size))
-			total_blog_page := int(math.Ceil(float64(blog_total) / blog_size))
-			blog_url := fmt.Sprintf(blog_api, blog_page, user)
-			fmt.Println(fmt.Sprintf("Crawl user %s blogs ... at page %d/%d", user, blog_page, total_blog_page))
-			c.Visit(blog_url)
-		}
-	})
-	c.Visit(blog_url)
-	c.Wait()
+	collector.Visit(blog_url)
+	collector.Wait()
 	return blogs
 }
 
 func main() {
 	//blog_user := "duandianR"
 	//crawl_blog(blog_user)
+	//
+	//collector.OnResponse(parseResponse)
 	url := fmt.Sprintf("https://bizapi.csdn.net/blog-console-api/v3/editor/getArticle?id=%s&model_type=", "80341748")
 	var headers map[string]string = map[string]string{
 		"x-ca-key":               "203803574",
 		"x-ca-signature-headers": "x-ca-key,x-ca-nonce",
 		"x-ca-nonce":             "",
 		"x-ca-signature":         "",
-		"Cookies":                "uuid_tt_dd=10_17437689420-1631256337980-379222; _ga=GA1.2.1512928437.1631256339; c_segment=6; dc_sid=1d2eeb271d79ce4df7f3d5d60d965d2b; __gads=ID=86303851e4c317da-220fe49495cb004d:T=1631274921:RT=1631274921:S=ALNI_MawIU-8Q9PrA1j7DED107s72QPnWA; _gid=GA1.2.805216307.1631678588; UN=duandianR; p_uid=U010000; Hm_lvt_e5ef47b9f471504959267fd614d579cd=1631759515,1631759540; Hm_ct_6bcd52f51e9b3dce32bec4a3997715ac=6525*1*10_17437689420-1631256337980-379222!5744*1*duandianR; Hm_lpvt_e5ef47b9f471504959267fd614d579cd=1631759547; c_first_ref=www.google.com.hk; SESSION=c08358b9-f15f-43c2-a3df-b133467d8a2d; UserName=duandianR; UserInfo=773258e6c6db4f95ab9a214b1bb4d220; UserToken=773258e6c6db4f95ab9a214b1bb4d220; UserNick=%E6%96%AD%E6%A1%A5bian; AU=4F0; BT=1631790356838; ssxmod_itna=eui=Dv4UxjxhCDzxAOe5Q0QqcqDTFhHuWeGQQpqDlOexWKGkD6DWP0WruT5zvzIe1i23rO/hEcGQTFORTRoP8SOpNTrDCPGn+pxMhYD44GTDt4DTD34DYDixib2DiydDjxGP9RLky=DEDYP9DDoDY+=uDitD4qDBDD66D7QDIw==lG=qyb2HICUQQmD9D0U3xBL4iaT5T1aNnuiro7KTWDDHz4yxl0qCN0mz4CPuDB=wxBQMzOX7IeyyBMUDNEoT3gf0R0otDShqSoQP09xAeh4AK74P87wd+05dKDDAS1zs3iD=; ssxmod_itna2=eui=Dv4UxjxhCDzxAOe5Q0QqcqDTFhHuWeGQQTD6ER2D0yGo503IPOnOhIXznqA1BPGFQxWANmqoKly0sVKm2wbEOj4eLWhTWznmysgRnwdKpxhfdgXwA1TM2H804IkzCIR4bix6o/AAoAgExdjU+3DrIFni+Yl2P=3o+REE3oeTIUW6+t8TPEoWY5ZYI77WNo8RTNmnWsWuC8m2Na6RtErh+RgvgjnWg3RE1oKHttKu0W4Tt3YKCvL7nlcBw/ZPj=9ShnnTLvdbw1CB75zCzVM5zNsGft5Iqj6lhIH3B6Zxm8sEHbcTMMYZuaVhFXBNxrClqhjOhjMsjOYkktgYY07CanKqM=CuFZooPkY+Q=Df3Pue43tOGHChx0GdTGH7R=+2snnKz7D5T3iqvT7NY+OBCAmevoqvP0v+WPD7QTG4MYPTBxxRD0ec7n5f8cwlDXltG7+=Dmqmfojq63FRtDu4eNnw0R541wWaGXf9g8w4m3l3HNDH1ADlmhr95DseF82xQ=E0xq/aDoY4Dm5LwYVU5DGcDG7axeuD8K059O44D===; Hm_up_6bcd52f51e9b3dce32bec4a3997715ac=%7B%22islogin%22%3A%7B%22value%22%3A%221%22%2C%22scope%22%3A1%7D%2C%22isonline%22%3A%7B%22value%22%3A%221%22%2C%22scope%22%3A1%7D%2C%22isvip%22%3A%7B%22value%22%3A%220%22%2C%22scope%22%3A1%7D%2C%22uid_%22%3A%7B%22value%22%3A%22duandianR%22%2C%22scope%22%3A1%7D%7D; log_Id_click=29; c_first_page=https%3A//blog.csdn.net/cbmljs/article/details/84991453; Hm_lvt_6bcd52f51e9b3dce32bec4a3997715ac=1631790331,1631791457,1631791514,1631864548; Hm_lpvt_6bcd52f51e9b3dce32bec4a3997715ac=1631864548; c_hasSub=true; log_Id_view=100; dc_session_id=10_1631866566150.407857; c_pref=https%3A//www.google.com.hk/; c_ref=https%3A//blog.csdn.net/duandianR%3Fspm%3D1000.2115.3001.5343; c_page_id=default; dc_tos=qzkkau; log_Id_pv=54",
+		"Cookies":                `uuid_tt_dd=10_9893908260-1631422578939-282460; _ga=GA1.2.892729514.1631631538; c_first_ref=www.google.com.hk; c_first_page=https://blog.csdn.net/Fei20140908/article/details/114849593; c_segment=12; dc_sid=8d2579a401f7d91942159c1334ac3b08; is_advert=1; _gid=GA1.2.655835131.1631807398; Hm_lvt_6bcd52f51e9b3dce32bec4a3997715ac=1631631538,1631632180,1631807398; dc_session_id=10_1631889878007.754241; unlogin_scroll_step=1631889884892; SESSION=ba973ce6-d269-450c-b554-e6fb4127515e; ssxmod_itna=eqRxnDBDcDRD97DyDGxBpOW5t0Qqe4xBAwFehKDsq3aDpxBKidDaxQapC+PuewReerbxmwIteFguifo=sRL4GLDmKQtQUWxiiDC40rD74irDDxD3Db4KDSCxG=DjWz6MyvxYPGWAqitfDQyODiPD=2yHZxi7DD5DArPDwx7OtQ0eTWKDerasUeokCAgDqWKD9xYDsEifORAfjt2C833ERnqDUWGU3GL4qe2DSpRHDlF2DC9kUi5Qr+d8cxvza0DTFHxNYWx5E0D0/Y44xEr4eejq+sedKAD5tnGKOdVeDDcpOCOPrYD=; ssxmod_itna2=eqRxnDBDcDRD97DyDGxBpOW5t0Qqe4xBAwFexikAqK33trDlZODjR0Wn6merlW=Gs+xApxyUEB5RxRD4Q+w+5OWTxhxTL2gIW+accWka2K6zqr2fYbfzM=OIq5v8y20HbIziM42kFYeBidGU8ou0odGQwhZiCiuYRIRf4rvfrbM+WN6Y+L=tmuYvlbdNCbEFmuPVQaQNbjPh6Wf7Bi7viEv8kHsDf3KQ7iVK7ByKYd+Y7dABioKy277Z6KRQU3tj1HmcZcfp2KeZgYhKQCtoytUQ6RwW7+pt3f2Nwhn/6=7Lo6S7OI8FKA3ezD4E+vilRr7Tjtqq=YiFALz7qpYxL2ehaP542mbVUe0Wes7iyDTlfI9743L+xAKaCpiQizUx3EbQoKl05qjP+UrYPbYHacj7K=oqE+nIohfhqiGQbvtu9b/a4gqtixDKwPtB30q5MixdZTK7LeAL0fPh1I2nLsBTT7OYGxwqF4SKX1I1ehVnxMD5uYwM1I1PhG1D3BTCZX1E05z5LPhlZxlpqTY53zqr9xrzDQDDLxD20od+0dQLTi9QnPqAQV/GDD==; acw_sc__v2=6144aa7a2c1a201ae02ccf8558621979f165528e; UserName=duandianR; UserInfo=c8ec4cf1eaba4441b605b8dd54d7ec1e; UserToken=c8ec4cf1eaba4441b605b8dd54d7ec1e; UserNick=断桥bian; AU=4F0; UN=duandianR; BT=1631890051748; p_uid=U010000; c_page_id=default; Hm_up_6bcd52f51e9b3dce32bec4a3997715ac={"islogin":{"value":"1","scope":1},"isonline":{"value":"1","scope":1},"isvip":{"value":"0","scope":1},"uid_":{"value":"duandianR","scope":1}}; Hm_ct_6bcd52f51e9b3dce32bec4a3997715ac=6525*1*10_9893908260-1631422578939-282460!5744*1*duandianR; log_Id_view=16; log_Id_click=3; c_pref=https://blog.csdn.net/qq_35524157/article/details/117385786; c_ref=https://mp.csdn.net/mp_blog/manage/article?spm=1001.2101.3001.5448; dc_tos=qzl2v0; log_Id_pv=12; Hm_lpvt_6bcd52f51e9b3dce32bec4a3997715ac=1631890622`,
 	}
 	uuid := createUuid()
 	headers["x-ca-nonce"] = uuid
