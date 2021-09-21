@@ -20,18 +20,4 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 )
 
-require (
-	github.com/cosmos72/gomacro v0.0.0-20210624153544-b4935e406a41 // indirect
-	github.com/go-zeromq/goczmq/v4 v4.2.2 // indirect
-	github.com/go-zeromq/zmq4 v0.13.0 // indirect
-	github.com/gofrs/uuid v4.0.0+incompatible // indirect
-	github.com/gopherdata/gophernotes v0.7.3 // indirect
-	github.com/mattn/go-runewidth v0.0.12 // indirect
-	github.com/peterh/liner v1.2.1 // indirect
-	github.com/rivo/uniseg v0.1.0 // indirect
-	golang.org/x/mod v0.3.0 // indirect
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9 // indirect
-	golang.org/x/sys v0.0.0-20210423082822-04245dca01da // indirect
-	golang.org/x/tools v0.1.0 // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-)
+require github.com/gopherdata/gophernotes v0.7.3 // indirect
