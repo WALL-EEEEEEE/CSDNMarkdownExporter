@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net/http"
 	Url "net/url"
+	"os"
 	"time"
 
 	"github.com/gocolly/colly"
@@ -35,6 +36,8 @@ type Blog struct {
 }
 
 var blog_counter int = 1
+var blog_finished_counter int = 1
+var blog_total int = 1
 var blogs []*Blog
 var user string
 var default_header map[string]string = map[string]string{
@@ -116,14 +119,17 @@ func getSign(uuid string, url string) string {
 	return sign
 }
 
-func crawl_blog_markdown(article_id string) {
-	blog_markdown_url := fmt.Sprintf(blog_markdown_api, article_id)
+func crawl_blog_markdown(blog *Blog) {
+	blog_id := blog.id
+	blog_markdown_url := fmt.Sprintf(blog_markdown_api, blog_id)
 	uuid := createUuid()
 	sign := getSign(uuid, blog_markdown_url)
+	context := colly.NewContext()
+	context.Put("blog", blog)
 	header.Set("x-ca-nonce", uuid)
 	header.Set("x-ca-signature", sign)
 	fmt.Println(fmt.Sprintf("Crawl markdown for blog: %s  ... ", blog_markdown_url))
-	markdown_collector.Request("GET", blog_markdown_url, nil, nil, *header)
+	markdown_collector.Request("GET", blog_markdown_url, nil, context, *header)
 }
 
 func parse_blog_list(resp *colly.Response) {
@@ -157,7 +163,7 @@ func parse_blog_list(resp *colly.Response) {
 		zblog.comment = int(vblog["commentCount"].(float64))
 		zblog.view = int(vblog["viewCount"].(float64))
 		zblog.createTime = postTime
-		crawl_blog_markdown(zblog.id)
+		crawl_blog_markdown(zblog)
 		blogs = append(blogs, zblog)
 		blog_counter += 1
 	}
@@ -171,13 +177,39 @@ func parse_blog_list(resp *colly.Response) {
 }
 
 func parse_blog_markdown(resp *colly.Response) {
+	blog := resp.Ctx.GetAny("blog").(*Blog)
 	if resp.StatusCode != 200 {
-		fmt.Printf("Crawl markdown article %s failed!\n", resp.Request.URL)
+		fmt.Printf("Crawl markdown article [%s] failed!\n", blog.title)
 		return
 	}
 	var resp_json map[string]interface{}
 	json.Unmarshal(resp.Body, &resp_json)
-	fmt.Println(resp_json)
+	status := int(resp_json["code"].(float64))
+	if status != 200 {
+		fmt.Printf("Crawl markdown article [%s] failed (cause: %s) ... skip %d/%d \n", blog.title, "network error!", blog_finished_counter, blog_total)
+		blog_finished_counter += 1
+		return
+	}
+	blog_md := resp_json["data"].(map[string]interface{})["markdowncontent"].(string)
+	if len(blog_md) < 1 {
+		fmt.Printf("Crawl markdown article [%s] failed (cause: %s)  ... skip ( %d/%d ) !\n", blog.title, "content is empty!", blog_finished_counter, blog_total)
+		blog_finished_counter += 1
+		return
+	}
+	markdown_path := fmt.Sprintf("blogs/[%s]-%s.md", blog.title, blog.createTime)
+	f, err := os.Create(markdown_path)
+	if err != nil {
+		tip := fmt.Sprintf("Create file %s failed (cause: %s)!", markdown_path, err)
+		panic(tip)
+	}
+	defer f.Close()
+	fmt.Printf("Crawl markdown article [%s] ... done ( %d/%d ) !\n", blog.title, blog_finished_counter, blog_total)
+	blog_finished_counter += 1
+	_, err = f.WriteString(blog_md)
+	if err != nil {
+		tip := fmt.Sprintf("Write file %s failed (cause: %s)!", markdown_path, err)
+		panic(tip)
+	}
 }
 
 func crawl_blog(user string) []*Blog {
