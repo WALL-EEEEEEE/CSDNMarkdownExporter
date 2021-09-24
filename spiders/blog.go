@@ -12,6 +12,7 @@ import (
 	"net/http"
 	Url "net/url"
 	"os"
+	"path"
 	"time"
 
 	"github.com/gocolly/colly"
@@ -36,10 +37,10 @@ type Blog struct {
 }
 
 var blog_counter int = 1
+var blog_markdown_counter int = 1
 var blog_finished_counter int = 1
-var blog_total int = 1
+var blog_total int = -1
 var blogs []*Blog
-var user string
 var default_header map[string]string = map[string]string{
 	"accept":                 "*/*",           //需要指定该头，不然就会报签名错误
 	"accept-encoding":        "gzip, deflate", //需要指定该头，不然就会报签名错误
@@ -128,18 +129,23 @@ func crawl_blog_markdown(blog *Blog) {
 	context.Put("blog", blog)
 	header.Set("x-ca-nonce", uuid)
 	header.Set("x-ca-signature", sign)
-	fmt.Println(fmt.Sprintf("Crawl markdown for blog: %s  ... ", blog_markdown_url))
+	fmt.Println(fmt.Sprintf("Crawl markdown for blog: %s  ... %d/%d ", blog.title, blog_markdown_counter, blog_total))
 	markdown_collector.Request("GET", blog_markdown_url, nil, context, *header)
+	blog_markdown_counter += 1
 }
 
 func parse_blog_list(resp *colly.Response) {
+	user := resp.Ctx.Get("user")
 	if resp.StatusCode != 200 {
 		tip := fmt.Sprintf("%s's blog list  can't get!", user)
 		panic(tip)
 	}
 	var resp_json map[string]interface{}
 	json.Unmarshal(resp.Body, &resp_json)
-	blog_total, _ := resp_json["data"].(map[string]interface{})["total"].(float64)
+	total_info, ok := resp_json["data"].(map[string]interface{})["total"]
+	if ok && (blog_total == -1) {
+		blog_total = int(total_info.(float64))
+	}
 	if blog_total <= 0 {
 		fmt.Println(fmt.Sprintf("No blogs found on user %s.", user))
 	}
@@ -172,7 +178,7 @@ func parse_blog_list(resp *colly.Response) {
 		total_blog_page := int(math.Ceil(float64(blog_total) / blog_size))
 		blog_url := fmt.Sprintf(blog_api, blog_page, user)
 		fmt.Println(fmt.Sprintf("Crawl user %s blogs ... at page %d/%d", user, blog_page, total_blog_page))
-		list_collector.Visit(blog_url)
+		list_collector.Request("GET", blog_url, nil, resp.Ctx, nil)
 	}
 }
 
@@ -196,25 +202,39 @@ func parse_blog_markdown(resp *colly.Response) {
 		blog_finished_counter += 1
 		return
 	}
-	markdown_path := fmt.Sprintf("blogs/[%s]-%s.md", blog.title, blog.createTime)
+	markdown_path := fmt.Sprintf("blogs/[%s]-%s.md", blog.createTime.Format("2006-01-02"), blog.title)
+	markdown_dir := path.Dir(markdown_path)
+	_, err := os.Stat(markdown_dir)
+	if err != nil {
+		err = os.MkdirAll(markdown_dir, 0777)
+		if err != nil {
+			tip := fmt.Sprintf("Failed to create directory  %s  (cause: %s)!", markdown_dir, err)
+			fmt.Println(tip)
+			return
+		}
+	}
 	f, err := os.Create(markdown_path)
 	if err != nil {
 		tip := fmt.Sprintf("Create file %s failed (cause: %s)!", markdown_path, err)
-		panic(tip)
+		fmt.Println(tip)
+		return
 	}
 	defer f.Close()
-	fmt.Printf("Crawl markdown article [%s] ... done ( %d/%d ) !\n", blog.title, blog_finished_counter, blog_total)
-	blog_finished_counter += 1
 	_, err = f.WriteString(blog_md)
 	if err != nil {
 		tip := fmt.Sprintf("Write file %s failed (cause: %s)!", markdown_path, err)
-		panic(tip)
+		fmt.Println(tip)
+		return
 	}
+	fmt.Println(fmt.Sprintf("Crawl markdown for blog: %s  ... done %d/%d ", blog.title, blog_finished_counter, blog_total))
+	blog_finished_counter += 1
 }
 
 func crawl_blog(user string) []*Blog {
 	blog_url := fmt.Sprintf(blog_api, blog_counter, user)
-	list_collector.Visit(blog_url)
+	context := colly.NewContext()
+	context.Put("user", user)
+	list_collector.Request("GET", blog_url, nil, context, nil)
 	list_collector.Wait()
 	markdown_collector.Wait()
 	return blogs
