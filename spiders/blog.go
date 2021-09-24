@@ -183,8 +183,10 @@ func parse_blog_list(resp *colly.Response) {
 }
 
 func parse_blog_markdown(resp *colly.Response) {
+	fmt.Printf("parse_blog_markdown %d ...\n", blog_finished_counter)
 	blog := resp.Ctx.GetAny("blog").(*Blog)
 	if resp.StatusCode != 200 {
+		blog_finished_counter += 1
 		fmt.Printf("Crawl markdown article [%s] failed!\n", blog.title)
 		return
 	}
@@ -192,14 +194,14 @@ func parse_blog_markdown(resp *colly.Response) {
 	json.Unmarshal(resp.Body, &resp_json)
 	status := int(resp_json["code"].(float64))
 	if status != 200 {
-		fmt.Printf("Crawl markdown article [%s] failed (cause: %s) ... skip %d/%d \n", blog.title, "network error!", blog_finished_counter, blog_total)
 		blog_finished_counter += 1
+		fmt.Printf("Crawl markdown article [%s] failed (cause: %s) ... skip %d/%d \n", blog.title, "network error!", blog_finished_counter, blog_total)
 		return
 	}
 	blog_md := resp_json["data"].(map[string]interface{})["markdowncontent"].(string)
 	if len(blog_md) < 1 {
-		fmt.Printf("Crawl markdown article [%s] failed (cause: %s)  ... skip ( %d/%d ) !\n", blog.title, "content is empty!", blog_finished_counter, blog_total)
 		blog_finished_counter += 1
+		fmt.Printf("Crawl markdown article [%s] failed (cause: %s)  ... skip ( %d/%d ) !\n", blog.title, "content is empty!", blog_finished_counter, blog_total)
 		return
 	}
 	markdown_path := fmt.Sprintf("blogs/[%s]-%s.md", blog.createTime.Format("2006-01-02"), blog.title)
@@ -212,9 +214,11 @@ func parse_blog_markdown(resp *colly.Response) {
 			fmt.Println(tip)
 			return
 		}
+		blog_finished_counter += 1
 	}
 	f, err := os.Create(markdown_path)
 	if err != nil {
+		blog_finished_counter += 1
 		tip := fmt.Sprintf("Create file %s failed (cause: %s)!", markdown_path, err)
 		fmt.Println(tip)
 		return
@@ -222,6 +226,7 @@ func parse_blog_markdown(resp *colly.Response) {
 	defer f.Close()
 	_, err = f.WriteString(blog_md)
 	if err != nil {
+		blog_finished_counter += 1
 		tip := fmt.Sprintf("Write file %s failed (cause: %s)!", markdown_path, err)
 		fmt.Println(tip)
 		return
@@ -236,8 +241,11 @@ func crawl_blog(user string) []*Blog {
 	context.Put("user", user)
 	list_collector.Request("GET", blog_url, nil, context, nil)
 	list_collector.Wait()
+	fmt.Println("list_collector exit.")
 	markdown_collector.Wait()
+	fmt.Println("markdown_collector exit.")
 	return blogs
+
 }
 
 func main() {
