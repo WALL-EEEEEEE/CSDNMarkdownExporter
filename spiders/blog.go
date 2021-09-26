@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	blog_api               = "https://blog.csdn.net/community/home-api/v1/get-business-list?page=%d&size=20&businessType=blog&orderby=&noMore=false&username=%s"
+	blog_list_api          = "https://bizapi.csdn.net/blog-console-api/v1/article/list?page=%d&status=enable&pageSize=20"
 	blog_markdown_api      = "https://bizapi.csdn.net/blog-console-api/v3/editor/getArticle?id=%s&model_type="
 	blog_size              = 20
 	x_ca_key               = "203803574"
@@ -40,6 +40,7 @@ var blog_counter int = 1
 var blog_markdown_counter int = 1
 var blog_finished_counter int = 1
 var blog_total int = -1
+var blog_page int = 1
 var blogs []*Blog
 var default_header map[string]string = map[string]string{
 	"accept":                 "*/*",           //需要指定该头，不然就会报签名错误
@@ -48,7 +49,7 @@ var default_header map[string]string = map[string]string{
 	"x-ca-signature-headers": x_ca_signature_headers,
 	"x-ca-nonce":             "",
 	"x-ca-signature":         "",
-	"cookie":                 `uuid_tt_dd=10_9893908260-1631422578939-282460; _ga=GA1.2.892729514.1631631538; c_first_ref=www.google.com.hk; c_first_page=https://blog.csdn.net/Fei20140908/article/details/114849593; c_segment=12; dc_sid=8d2579a401f7d91942159c1334ac3b08; is_advert=1; _gid=GA1.2.655835131.1631807398; Hm_lvt_6bcd52f51e9b3dce32bec4a3997715ac=1631631538,1631632180,1631807398; dc_session_id=10_1631889878007.754241; unlogin_scroll_step=1631889884892; SESSION=ba973ce6-d269-450c-b554-e6fb4127515e; ssxmod_itna=eqRxnDBDcDRD97DyDGxBpOW5t0Qqe4xBAwFehKDsq3aDpxBKidDaxQapC+PuewReerbxmwIteFguifo=sRL4GLDmKQtQUWxiiDC40rD74irDDxD3Db4KDSCxG=DjWz6MyvxYPGWAqitfDQyODiPD=2yHZxi7DD5DArPDwx7OtQ0eTWKDerasUeokCAgDqWKD9xYDsEifORAfjt2C833ERnqDUWGU3GL4qe2DSpRHDlF2DC9kUi5Qr+d8cxvza0DTFHxNYWx5E0D0/Y44xEr4eejq+sedKAD5tnGKOdVeDDcpOCOPrYD=; ssxmod_itna2=eqRxnDBDcDRD97DyDGxBpOW5t0Qqe4xBAwFexikAqK33trDlZODjR0Wn6merlW=Gs+xApxyUEB5RxRD4Q+w+5OWTxhxTL2gIW+accWka2K6zqr2fYbfzM=OIq5v8y20HbIziM42kFYeBidGU8ou0odGQwhZiCiuYRIRf4rvfrbM+WN6Y+L=tmuYvlbdNCbEFmuPVQaQNbjPh6Wf7Bi7viEv8kHsDf3KQ7iVK7ByKYd+Y7dABioKy277Z6KRQU3tj1HmcZcfp2KeZgYhKQCtoytUQ6RwW7+pt3f2Nwhn/6=7Lo6S7OI8FKA3ezD4E+vilRr7Tjtqq=YiFALz7qpYxL2ehaP542mbVUe0Wes7iyDTlfI9743L+xAKaCpiQizUx3EbQoKl05qjP+UrYPbYHacj7K=oqE+nIohfhqiGQbvtu9b/a4gqtixDKwPtB30q5MixdZTK7LeAL0fPh1I2nLsBTT7OYGxwqF4SKX1I1ehVnxMD5uYwM1I1PhG1D3BTCZX1E05z5LPhlZxlpqTY53zqr9xrzDQDDLxD20od+0dQLTi9QnPqAQV/GDD==; acw_sc__v2=6144aa7a2c1a201ae02ccf8558621979f165528e; UserName=duandianR; UserInfo=c8ec4cf1eaba4441b605b8dd54d7ec1e; UserToken=c8ec4cf1eaba4441b605b8dd54d7ec1e; UserNick=断桥bian; AU=4F0; UN=duandianR; BT=1631890051748; p_uid=U010000; c_page_id=default; Hm_up_6bcd52f51e9b3dce32bec4a3997715ac={"islogin":{"value":"1","scope":1},"isonline":{"value":"1","scope":1},"isvip":{"value":"0","scope":1},"uid_":{"value":"duandianR","scope":1}}; Hm_ct_6bcd52f51e9b3dce32bec4a3997715ac=6525*1*10_9893908260-1631422578939-282460!5744*1*duandianR; log_Id_view=16; log_Id_click=3; c_pref=https://blog.csdn.net/qq_35524157/article/details/117385786; c_ref=https://mp.csdn.net/mp_blog/manage/article?spm=1001.2101.3001.5448; dc_tos=qzl2v0; log_Id_pv=12; Hm_lpvt_6bcd52f51e9b3dce32bec4a3997715ac=1631890622`,
+	"cookie":                 `uuid_tt_dd=10_9893907410-1624680270736-675324; _ga=GA1.2.1118997374.1624680273; __gads=ID=7a576859ebe6ada2-22410a550dca005f:T=1625065315:RT=1625065315:S=ALNI_MYPhoDssv7CbcLXRA-zvPxr7pWhaA; ssxmod_itna=QuDtGIqGxjg3i=DXtG7maKiKYYvbP0=+335bQq7Dla=xWKGkD6DWP0WbuN3b83CWWYn3Y3WarTxPLFRQgRaQ3W7Puz8mDAoDhx7QDoPqD1XD0KPo+dkKD3Dm4i3DDxQDgDmKGg8qG36nx0r92PD0xD8Bgpzu2iPpjR8vaHQzxGd/C038C4FPY2Dkb+KsjnvCDhxkAhKQGreVWRDiCRPZ7dDi2DF7YD==; ssxmod_itna2=QuDtGIqGxjg3i=DXtG7maKiKYYvbP0=+335bQqD6EfEWcx0vux03q1icU023cD8Eb64/4fEFPP2K4CiRiQq8Lb2IWhYP7YA8ccMvumOk/WmrhoOGz7K66wKKU2svVZucRS1XuNg7wIkNM/MjniR6/Yj6cbL6+WQUVniqo54R4N0YfFMvX+3=KluQQ=LukWdiViWbFwo=T=Ra7T1iQrQLxx66WNQE+CnX9R37qg63Sf601dlnStZ2m=UIvpFRstAqaD7jx7ihx7SvWSAIqAlIXqX+hYyCnOHxDFqD2WiD; UserName=duandianR; UserInfo=3dbc6260694043afaed303ac9ae236ce; UserToken=3dbc6260694043afaed303ac9ae236ce; UserNick=断桥bian; AU=4F0; UN=duandianR; BT=1625981704006; p_uid=U010000; Hm_up_6bcd52f51e9b3dce32bec4a3997715ac={"islogin":{"value":"1","scope":1},"isonline":{"value":"1","scope":1},"isvip":{"value":"0","scope":1},"uid_":{"value":"duandianR","scope":1}}; Hm_ct_6bcd52f51e9b3dce32bec4a3997715ac=6525*1*10_9893907410-1624680270736-675324!5744*1*duandianR; c_first_ref=www.google.com.hk; c_first_page=https://blog.csdn.net/qq_42956179/article/details/118576680; c_segment=12; dc_sid=323881ccbc1207c5088fc72b1112977d; Hm_lvt_6bcd52f51e9b3dce32bec4a3997715ac=1632410118,1632410150; dc_session_id=10_1632549981861.981546; c_page_id=default; c_hasSub=true; is_advert=1; log_Id_view=319; c_pref=https://blog.csdn.net/qq_42956179/category_11058451.html; c_ref=https://editor.csdn.net/; Hm_lpvt_6bcd52f51e9b3dce32bec4a3997715ac=1632550021; dc_tos=qzz7nq; log_Id_pv=86; log_Id_click=24`,
 }
 var header *http.Header = &http.Header{}
 
@@ -69,7 +70,9 @@ func init() {
 	list_collector = collector.Clone()
 	markdown_collector = list_collector.Clone()
 	list_collector.OnResponse(parse_blog_list)
+	list_collector.OnError(parse_blog_list_error)
 	markdown_collector.OnResponse(parse_blog_markdown)
+	markdown_collector.OnError(parse_blog_markdown_error)
 }
 
 func IntRange(start int, end int, step int) []int {
@@ -127,6 +130,7 @@ func crawl_blog_markdown(blog *Blog) {
 	sign := getSign(uuid, blog_markdown_url)
 	context := colly.NewContext()
 	context.Put("blog", blog)
+	context.Put("counter", blog_markdown_counter)
 	header.Set("x-ca-nonce", uuid)
 	header.Set("x-ca-signature", sign)
 	fmt.Println(fmt.Sprintf("Crawl markdown for blog: %s  ... %d/%d ", blog.title, blog_markdown_counter, blog_total))
@@ -174,16 +178,34 @@ func parse_blog_list(resp *colly.Response) {
 		blog_counter += 1
 	}
 	if blog_counter < int(blog_total) {
-		blog_page := int(math.Ceil(float64(blog_counter) / blog_size))
+		blog_page += 1
 		total_blog_page := int(math.Ceil(float64(blog_total) / blog_size))
-		blog_url := fmt.Sprintf(blog_api, blog_page, user)
+		blog_list_url := fmt.Sprintf(blog_list_api, blog_page)
+		uuid := createUuid()
+		sign := getSign(uuid, blog_list_url)
+		header.Set("x-ca-nonce", uuid)
+		header.Set("x-ca-signature", sign)
 		fmt.Println(fmt.Sprintf("Crawl user %s blogs ... at page %d/%d", user, blog_page, total_blog_page))
-		list_collector.Request("GET", blog_url, nil, resp.Ctx, nil)
+		resp.Ctx.Put("user", user)
+		resp.Ctx.Put("page", string(blog_page))
+		list_collector.Request("GET", blog_list_url, nil, resp.Ctx, *header)
 	}
+}
+func parse_blog_list_error(resp *colly.Response, err error) {
+	user := resp.Ctx.GetAny("user")
+	page := resp.Ctx.GetAny("page")
+	fmt.Println(resp.Request.URL)
+	fmt.Println(resp.Request.Headers)
+	fmt.Println(resp.Headers)
+	fmt.Println(fmt.Sprintf("Crawl user %s blogs failed (cause: %s) ... at page %s ", user, err, page))
+}
+func parse_blog_markdown_error(resp *colly.Response, err error) {
+	blog := resp.Ctx.GetAny("blog").(*Blog)
+	counter := resp.Ctx.GetAny("counter")
+	fmt.Println(fmt.Sprintf("Crawl markdown for blog: %s  ... failed (cause: %s) %d/%d ", blog.title, err, counter, blog_total))
 }
 
 func parse_blog_markdown(resp *colly.Response) {
-	fmt.Printf("parse_blog_markdown %d ...\n", blog_finished_counter)
 	blog := resp.Ctx.GetAny("blog").(*Blog)
 	if resp.StatusCode != 200 {
 		blog_finished_counter += 1
@@ -194,14 +216,14 @@ func parse_blog_markdown(resp *colly.Response) {
 	json.Unmarshal(resp.Body, &resp_json)
 	status := int(resp_json["code"].(float64))
 	if status != 200 {
-		blog_finished_counter += 1
 		fmt.Printf("Crawl markdown article [%s] failed (cause: %s) ... skip %d/%d \n", blog.title, "network error!", blog_finished_counter, blog_total)
+		blog_finished_counter += 1
 		return
 	}
 	blog_md := resp_json["data"].(map[string]interface{})["markdowncontent"].(string)
 	if len(blog_md) < 1 {
+		fmt.Printf("Crawl markdown article [%s] failed (cause: %s)  ... skip  %d/%d  !\n", blog.title, "content is empty!", blog_finished_counter, blog_total)
 		blog_finished_counter += 1
-		fmt.Printf("Crawl markdown article [%s] failed (cause: %s)  ... skip ( %d/%d ) !\n", blog.title, "content is empty!", blog_finished_counter, blog_total)
 		return
 	}
 	markdown_path := fmt.Sprintf("blogs/[%s]-%s.md", blog.createTime.Format("2006-01-02"), blog.title)
@@ -210,25 +232,25 @@ func parse_blog_markdown(resp *colly.Response) {
 	if err != nil {
 		err = os.MkdirAll(markdown_dir, 0777)
 		if err != nil {
-			tip := fmt.Sprintf("Failed to create directory  %s  (cause: %s)!", markdown_dir, err)
-			fmt.Println(tip)
+			cause := fmt.Sprintf("Failed to create directory  %s (caused by: %s)!", markdown_dir, err)
+			fmt.Printf("Crawl markdown article [%s] failed (cause: %s)  ... skip  %d/%d  !\n", blog.title, cause, blog_finished_counter, blog_total)
+			blog_finished_counter += 1
 			return
 		}
-		blog_finished_counter += 1
 	}
 	f, err := os.Create(markdown_path)
 	if err != nil {
+		cause := fmt.Sprintf("Failed to create file %s (caused by: %s)!", markdown_path, err)
+		fmt.Printf("Crawl markdown article [%s] failed (cause: %s)  ... skip ( %d/%d ) !\n", blog.title, cause, blog_finished_counter, blog_total)
 		blog_finished_counter += 1
-		tip := fmt.Sprintf("Create file %s failed (cause: %s)!", markdown_path, err)
-		fmt.Println(tip)
 		return
 	}
 	defer f.Close()
 	_, err = f.WriteString(blog_md)
 	if err != nil {
+		cause := fmt.Sprintf("Failed to write file %s (caused by: %s)!", markdown_path, err)
+		fmt.Printf("Crawl markdown article [%s] failed (cause: %s)  ... skip ( %d/%d ) !\n", blog.title, cause, blog_finished_counter, blog_total)
 		blog_finished_counter += 1
-		tip := fmt.Sprintf("Write file %s failed (cause: %s)!", markdown_path, err)
-		fmt.Println(tip)
 		return
 	}
 	fmt.Println(fmt.Sprintf("Crawl markdown for blog: %s  ... done %d/%d ", blog.title, blog_finished_counter, blog_total))
@@ -236,10 +258,17 @@ func parse_blog_markdown(resp *colly.Response) {
 }
 
 func crawl_blog(user string) []*Blog {
-	blog_url := fmt.Sprintf(blog_api, blog_counter, user)
+	blog_list_url := fmt.Sprintf(blog_list_api, blog_page)
+	uuid := createUuid()
+	list_header := header.Clone()
+	sign := getSign(uuid, blog_list_url)
+	list_header.Set("x-ca-nonce", uuid)
+	list_header.Set("x-ca-signature", sign)
 	context := colly.NewContext()
 	context.Put("user", user)
-	list_collector.Request("GET", blog_url, nil, context, nil)
+	context.Put("page", "1")
+	fmt.Println(fmt.Sprintf("Crawl user %s blogs ... at page %d", user, blog_page))
+	list_collector.Request("GET", blog_list_url, nil, context, list_header)
 	list_collector.Wait()
 	fmt.Println("list_collector exit.")
 	markdown_collector.Wait()
