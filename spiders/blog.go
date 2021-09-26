@@ -10,7 +10,6 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	Url "net/url"
 	"os"
 	"path"
 	"time"
@@ -24,6 +23,8 @@ const (
 	blog_size              = 20
 	x_ca_key               = "203803574"
 	x_ca_signature_headers = "x-ca-key,x-ca-nonce"
+	encrypt_key            = "9znpamsyl2c7cdrr9sas0le9vbc3r6ba"
+	uuid_template          = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
 )
 
 type Blog struct {
@@ -85,7 +86,6 @@ func IntRange(start int, end int, step int) []int {
 func createUuid() string {
 	var text string = ""
 	var char_list []byte
-	const uuid_template string = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
 	seq := append(IntRange(49, 58, 1), IntRange(97, 97+6, 1)...)
 	rand.Seed(time.Now().Unix())
 	for _, c := range seq {
@@ -103,16 +103,17 @@ func createUuid() string {
 	return text
 }
 
-func getSign(uuid string, url string) string {
-	u_url, err := Url.Parse(url)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to parse url %s (%s)", url, err))
+func getSign(request *colly.Request) string {
+	uuid := request.Headers.Get("x-ca-nonce")
+	if len(uuid) == 0 {
+		uuid = createUuid()
 	}
-	ekey := []byte("9znpamsyl2c7cdrr9sas0le9vbc3r6ba")
-	url_query := u_url.RawQuery
-	url_compnent := u_url.Path + "?" + url_query[0:len(url_query)-1]
-	url_str := fmt.Sprintf("GET\n*/*\n\n\n\nx-ca-key:203803574\nx-ca-nonce:%s\n%s", uuid, url_compnent)
+	url := request.URL
+	url_query := url.Query()
+	url_compnent := url.Path + "?" + url_query
+	url_str := fmt.Sprintf("GET\n*/*\n\n\n\nx-ca-key:%s\nx-ca-nonce:%s\n%s", x_ca_key, uuid, url_compnent)
 	to_enc := []byte(url_str)
+	ekey := []byte(encrypt_key)
 	hmac_encoder := hmac.New(sha256.New, ekey)
 	hmac_encoder.Write(to_enc)
 	hmac_digest := hmac_encoder.Sum(nil)
@@ -249,7 +250,10 @@ func crawl_blog(user string) []*Blog {
 }
 
 func main() {
-	blog_user := "duandianR"
-	crawl_blog(blog_user)
+	//blog_user := "duandianR"
+	//crawl_blog(blog_user)
+	uuid := "9fd8d303-9f3b-4b96-b885-3ad6434124e0"
+	url := "https://bizapi.csdn.net/blog-console-api/v1/article/list?pageSize=20"
+	fmt.Println(getSign(uuid, url))
 
 }
