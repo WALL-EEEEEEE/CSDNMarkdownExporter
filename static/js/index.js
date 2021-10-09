@@ -33,7 +33,7 @@ function init_blog_exporter() {
 }
 
 function run_blog_exporter(site, site_params) {
-    params = ["run", "-s "+site]
+    params = ["run", "-s", site]
 
     for (const param_key in site_params) {
         param = "--"+param_key+"="+site_params[param_key]

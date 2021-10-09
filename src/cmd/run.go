@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/duanqiaobb/BlogExporter/inter"
 	"github.com/duanqiaobb/BlogExporter/spiders"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -25,7 +26,6 @@ var (
 			if !validate_site(site) {
 				cmd.PrintErrf("Invalid site name!\n%s", textify_sites(sites))
 			}
-			finished := make(chan bool)
 			switch site {
 			case "CSDN":
 				user, _ := cmd.Flags().GetString("user")
@@ -34,7 +34,7 @@ var (
 				outputDir = strings.TrimSpace(outputDir)
 				cookie, _ := cmd.Flags().GetString("cookie")
 				cookie = strings.ReplaceAll(strings.TrimSpace(cookie), "\"", "")
-				spider := spiders.GetResigerSpiderByName("CSDN")
+				spider := spiders.GetResigerSpiderByName("CSDN").New(user, cookie, outputDir).(inter.Spider)
 				if len(user) < 1 {
 					cmd.Help()
 					cmd.PrintErrln("\nError: user of CSDN must be specified !")
@@ -47,7 +47,6 @@ var (
 				}
 				spider.Crawl()
 			}
-			<-finished
 
 		},
 	}

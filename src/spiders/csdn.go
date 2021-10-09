@@ -57,7 +57,8 @@ type CSDNSpider struct {
 	markdown_collector    *colly.Collector
 }
 
-func (spider *CSDNSpider) New(user, cookie, outputDir string) *CSDNSpider {
+func (spider *CSDNSpider) New(spider_args ...interface{}) interface{} {
+	var user, cookie, outputDir string = spider_args[0].(string), spider_args[1].(string), spider_args[2].(string)
 	header := &http.Header{}
 	for key, value := range default_header {
 		header.Add(key, value)
@@ -333,7 +334,7 @@ func (spider *CSDNSpider) Crawl() {
 	context.Put("user", spider.user)
 	context.Put("page", "1")
 	log.Infof("Crawl user %s blogs ... at page %d", spider.user, spider.blog_page)
-	spider.list_collector.Request("GET", blog_list_url, nil, context, spider.header.Clone())
+	spider.list_collector.Request("GET", blog_list_url, nil, context, nil)
 	spider.list_collector.Wait()
 	spider.markdown_collector.Wait()
 
