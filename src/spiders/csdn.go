@@ -57,7 +57,7 @@ type CSDNSpider struct {
 	markdown_collector    *colly.Collector
 }
 
-func New(user, cookie, outputDir string) *CSDNSpider {
+func (spider *CSDNSpider) New(user, cookie, outputDir string) *CSDNSpider {
 	header := &http.Header{}
 	for key, value := range default_header {
 		header.Add(key, value)
@@ -78,7 +78,7 @@ func New(user, cookie, outputDir string) *CSDNSpider {
 	collector.Limit(limitRule)
 	list_collector := collector.Clone()
 	markdown_collector := collector.Clone()
-	spider := &CSDNSpider{
+	spider = &CSDNSpider{
 		blog_counter:          1,
 		blog_finished_counter: 1,
 		blog_markdown_counter: 1,
@@ -337,4 +337,8 @@ func (spider *CSDNSpider) Crawl() {
 	spider.list_collector.Wait()
 	spider.markdown_collector.Wait()
 
+}
+
+func init() {
+	RegisterSpider("CSDN", (*CSDNSpider)(nil))
 }

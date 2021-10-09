@@ -2,13 +2,9 @@ package cmd
 
 import (
 	"encoding/json"
-	"io/fs"
-	"os"
-	"path"
-	"path/filepath"
-	"runtime"
-	"strings"
 
+	"github.com/duanqiaobb/BlogExporter/spiders"
+	_ "github.com/duanqiaobb/BlogExporter/spiders"
 	"github.com/spf13/cobra"
 )
 
@@ -18,11 +14,7 @@ var listCmd = &cobra.Command{
 	Long:  `List all sites supported`,
 	Args:  cobra.MaximumNArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
-		avaliable_sites, err := list_sites()
-		if err != nil {
-			cmd.PrintErrf("Error: %s", err)
-			return
-		}
+		avaliable_sites := list_sites()
 		format, _ := cmd.Flags().GetString("format")
 		if format == "text" {
 			cmd.Println(textify_sites(avaliable_sites))
@@ -50,21 +42,9 @@ func jsonify_sites(sites []string) string {
 
 }
 
-func list_sites() ([]string, error) {
-	var sites []string
-	_, currFilePath, _, _ := runtime.Caller(0)
-	spiderDir := path.Join(path.Dir(path.Dir(currFilePath)), "spiders")
-	if _, err := os.Stat(spiderDir); err != nil {
-		return sites, err
-	}
-	filepath.Walk(spiderDir, func(path string, info fs.FileInfo, err error) error {
-		if !info.IsDir() {
-			site_name := strings.Split(info.Name(), filepath.Ext(info.Name()))[0]
-			sites = append(sites, strings.ToUpper(site_name))
-		}
-		return nil
-	})
-	return sites, nil
+func list_sites() []string {
+	sites := spiders.GetRegisteredSpiderNames()
+	return sites
 }
 
 func init() {

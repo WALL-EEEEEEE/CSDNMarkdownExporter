@@ -34,7 +34,7 @@ var (
 				outputDir = strings.TrimSpace(outputDir)
 				cookie, _ := cmd.Flags().GetString("cookie")
 				cookie = strings.ReplaceAll(strings.TrimSpace(cookie), "\"", "")
-				spider := spiders.New(user, cookie, outputDir)
+				spider := spiders.GetResigerSpiderByName("CSDN")
 				if len(user) < 1 {
 					cmd.Help()
 					cmd.PrintErrln("\nError: user of CSDN must be specified !")
@@ -51,7 +51,7 @@ var (
 
 		},
 	}
-	sites, _ = list_sites()
+	sites = list_sites()
 )
 
 func validate_site(site string) bool {
