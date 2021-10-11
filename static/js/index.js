@@ -34,9 +34,13 @@ function init_blog_exporter() {
 
 function run_blog_exporter(site, site_params) {
     params = ["run", "-s", site]
-
+    //site_params['cookie'] = encodeURIComponent(site_params["cookie"])
     for (const param_key in site_params) {
-        param = "--"+param_key+"="+site_params[param_key]
+        if (param_key=="cookie") {
+            param = "--"+param_key+"=\""+site_params[param_key]+"\""
+        } else {
+            param = "--"+param_key+"="+site_params[param_key]
+        }
         params.push(param)
     }
     go.argv = ["BlogExporter"].concat(params)//["BlogExporter","list"] //params

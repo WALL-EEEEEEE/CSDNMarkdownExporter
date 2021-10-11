@@ -1,11 +1,34 @@
 GOROOT := $(shell go env GOROOT)
 
+include makefiles/os_detect.mk
+
 run : 
 	cd src && go run main.go $(args)
 
-server : build-wasm
+deps-caddy :
+ifeq ($(SYSTEM),"OSX")
+	@echo "- 检查caddy是否安装 ..." 
+	@if brew list caddy &>/dev/null; then \
+		echo "- caddy已经安装 ... 跳过"; \
+	else  \
+		echo "- caddy未安装 ... 尝试安装" && brew install caddy;  \
+	fi 
+else
+	ifeq ($(SYSTEM), "LINUX")
+	    $(error 你的系统为 Linux, 暂不支持caddy安装!)
+	else
+		ifeq ($(SYSTEM), "WIN32")
+			$(error 你的系统为 Windows, 暂不支持caddy安装!)
+		else
+			$(error 你的系统暂不支持！)
+		endif
+	endif
+endif
+	
+
+
+server : build-wasm deps-caddy
 	@echo "- 启动静态网站服务 ..."
-	go run src/server.go --dir static
 
 build-wasm : static/wasm/main.wasm static/js/wasm_exec.js
 

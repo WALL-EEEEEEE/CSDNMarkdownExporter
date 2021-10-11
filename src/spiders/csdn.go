@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"sort"
@@ -63,6 +64,7 @@ func (spider *CSDNSpider) New(spider_args ...interface{}) interface{} {
 	for key, value := range default_header {
 		header.Add(key, value)
 	}
+	log.Info(cookie)
 	header.Set("cookie", cookie)
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -107,6 +109,19 @@ func (spider *CSDNSpider) intRange(start int, end int, step int) []int {
 		start = start + step
 	}
 	return seq
+}
+
+func (spider *CSDNSpider) SetProxy(proxy string) {
+	proxy_url, err := url.Parse(proxy)
+	if err != nil {
+		log.Panicf("Proxy url %s is invalid, caused by: %s!", proxy_url, err)
+	}
+	spider.markdown_collector.OnRequest(func(r *colly.Request) {
+		r.URL.Host = proxy_url.Host
+	})
+	spider.list_collector.OnRequest(func(r *colly.Request) {
+		r.URL.Host = proxy_url.Host
+	})
 }
 
 func (spider *CSDNSpider) createUuid() string {
@@ -195,6 +210,7 @@ func (spider *CSDNSpider) crawl_blog_markdown(blog *inter.Blog) {
 	ctx.Put("blog", blog)
 	ctx.Put("counter", spider.blog_markdown_counter)
 	log.Infof("Crawl markdown for blog: %s  ... %d/%d ", blog.Title, spider.blog_markdown_counter, spider.blog_total)
+	log.Info(blog_markdown_req.Header)
 	spider.markdown_collector.Request(blog_markdown_req.Method, blog_markdown_req.URL.String(), nil, ctx, blog_markdown_req.Header)
 	spider.blog_markdown_counter += 1
 }
@@ -249,23 +265,31 @@ func (spider *CSDNSpider) parse_blog_list(resp *colly.Response) {
 		total_blog_page := int(math.Ceil(float64(spider.blog_total) / blog_size))
 		blog_list_url := fmt.Sprintf(blog_list_api, spider.blog_page, user)
 		log.Infof("Crawl user %s blogs ... at page %d/%d", user, spider.blog_page, total_blog_page)
-		spider.list_collector.Request("GET", blog_list_url, nil, resp.Ctx, spider.header.Clone())
+		spider.list_collector.Request("GET", blog_list_url, nil, resp.Ctx, nil)
 	}
 }
 func (spider *CSDNSpider) parse_blog_list_error(resp *colly.Response, err error) {
 	user := resp.Ctx.GetAny("user")
 	page := resp.Ctx.GetAny("page")
+	x_ca_error_messsage := ""
+	if resp != nil && resp.Headers != nil {
+		x_ca_error_messsage = resp.Headers.Get("x-ca-error-message")
+	}
 	log.WithFields(
 		log.Fields{
-			"x-ca-error-message": resp.Headers.Get("x-ca-error-message"),
+			"x-ca-error-message": x_ca_error_messsage,
 		}).Errorf("Crawl user %s blogs failed (cause: %s) ... at page %s ", user, err, page)
 }
 func (spider *CSDNSpider) parse_blog_markdown_error(resp *colly.Response, err error) {
 	blog := resp.Ctx.GetAny("blog").(*inter.Blog)
 	counter := resp.Ctx.GetAny("counter")
+	x_ca_error_messsage := ""
+	if resp != nil && resp.Headers != nil {
+		x_ca_error_messsage = resp.Headers.Get("x-ca-error-message")
+	}
 	log.WithFields(
 		log.Fields{
-			"x-ca-error-message": resp.Headers.Get("x-ca-error-message"),
+			"x-ca-error-message": x_ca_error_messsage,
 		}).Errorf("Crawl markdown for blog: %s  ... failed (cause: %s) %d/%d ", blog.Title, err, counter, spider.blog_total)
 }
 

@@ -33,8 +33,10 @@ var (
 				outputDir, _ := cmd.Flags().GetString("output")
 				outputDir = strings.TrimSpace(outputDir)
 				cookie, _ := cmd.Flags().GetString("cookie")
+				proxy, _ := cmd.Flags().GetString("proxy")
 				cookie = strings.ReplaceAll(strings.TrimSpace(cookie), "\"", "")
 				spider := spiders.GetResigerSpiderByName("CSDN").New(user, cookie, outputDir).(inter.Spider)
+				spider.SetProxy(proxy)
 				if len(user) < 1 {
 					cmd.Help()
 					cmd.PrintErrln("\nError: user of CSDN must be specified !")
@@ -43,6 +45,7 @@ var (
 				if len(cookie) < 1 {
 					cmd.Help()
 					cmd.PrintErrln("\nError: cookie of CSDN must be specified !")
+					return
 
 				}
 				spider.Crawl()
@@ -67,4 +70,6 @@ func init() {
 	runCmd.Flags().StringP("site", "s", "CSDN", usage)
 	runCmd.Flags().StringP("user", "u", "", "user in blog site")
 	runCmd.Flags().StringP("cookie", "c", "", "user cookie in blog site")
+	runCmd.Flags().StringP("proxy", "p", "", "reverse proxy server for cross-domain cors blocked")
+
 }
