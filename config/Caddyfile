@@ -7,19 +7,19 @@
 	}
 }
 localhost {
+	root * ./static
 	@notStatic {
 		not {
 			file {
-				root static
 				try_files {path}
 			}
-			host localhost
 		}
 	}
-	file_server {
-		root static
+	file_server
+	reverse_proxy @notStatic {http.request.header.Host}:80{uri} {
+		transport http {
+			tls
+		}
 	}
-	reverse_proxy @notStatic {
-		to {host}{query}
-	}
+	try_files {path} /index.html
 }
