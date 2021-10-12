@@ -1,19 +1,25 @@
-:8080 {
+{
+	debug
 	log {
 		level DEBUG
 		format console
 		output file log/caddy.log
 	}
-
-	@not_localhost {
-		not host localhost
+}
+localhost {
+	@notStatic {
+		not {
+			file {
+				root static
+				try_files {path}
+			}
+			host localhost
+		}
 	}
-
 	file_server {
 		root static
 	}
-
-	reverse_proxy @not_localhost {
+	reverse_proxy @notStatic {
 		to {host}{query}
 	}
 }
