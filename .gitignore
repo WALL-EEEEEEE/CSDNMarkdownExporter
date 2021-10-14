@@ -1,6 +1,7 @@
 **blogs
 .*
 **/wasm_exec.js
+**/*.wasm
 target
 log
 
