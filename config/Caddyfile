@@ -7,7 +7,7 @@
 	}
 }
 localhost {
-	root * ./static
+	root * ./web
 	@notStatic {
 		header X-Caddy-Origin-Host *
 	}
