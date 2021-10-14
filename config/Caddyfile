@@ -12,13 +12,18 @@ localhost {
 		header X-Caddy-Origin-Host *
 	}
 	route {
-		reverse_proxy @notStatic {http.request.header.X-Caddy-Origin-Host}:80 {
+		reverse_proxy @notStatic {http.request.header.X-Caddy-Origin-Schema}{http.request.header.X-Caddy-Origin-Host}{http.request.header.X-Caddy-Origin-Port} {
 			transport http {
 				tls
 			}
 			header_up -X-Caddy-Origin-Host
+			header_up -X-Caddy-Origin-Port
+			header_up -X-Caddy-Origin-Schema
+
 			header_up Host {http.request.header.X-Caddy-Origin-Host}
 			header_down -X-Caddy-Origin-Host
+			header_down -X-Caddy-Origin-Port
+			header_down -X-Caddy-Origin-Schema
 			header_down Host {http.request.header.X-Caddy-Origin-Host}
 		}
 		try_files {path} /index.html

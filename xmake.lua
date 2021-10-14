@@ -1,5 +1,12 @@
 set_languages("go")
-add_requires("brew::caddy", {alias = "caddy", optinal=true})
+
+if is_os("macosx") then
+  add_requires("brew::caddy", {alias = "caddy", optional=true})
+end
+
+if is_os("linux") then
+  add_requires("apt::caddy", {alias = "caddy", optional=true})
+end
 
 target("console")
     set_kind("binary")
@@ -19,9 +26,14 @@ target("wasm")
       -- 导入配置模块
       import("core.project.config")
       local wasm_path= vformat("$(projectdir)/%s", "web/wasm/main.wasm")
+      local go_wasm_js  = "$(shell go env GOROOT)/misc/wasm/wasm_exec.js"
+      local target_wasm_js = "$(projectdir)/web/js/wasm_exec.js"
       os.setenv("GOOS", "js")
       os.setenv("GOARCH", "wasm")
+      cprint("构建 wasm ...")
       os.runv("go", {"build", "-o", wasm_path})
+      cprint("准备 Go语言的wasm的执行环境 ...")
+      os.cp(go_wasm_js, target_wasm_js)
     end)
 
 target("server")
