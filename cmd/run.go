@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	. "github.com/duanqiaobb/BlogExporter/pkg"
-	. "github.com/duanqiaobb/BlogExporter/pkg/inter"
+	. "github.com/duanqiaobb/BlogExporter/spiders"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -35,7 +35,7 @@ var (
 				cookie, _ := cmd.Flags().GetString("cookie")
 				proxy, _ := cmd.Flags().GetString("proxy")
 				cookie = strings.ReplaceAll(strings.TrimSpace(cookie), "\"", "")
-				spider := GetResigerSpiderByName("CSDN").New(user, cookie, outputDir).(Spider)
+				spider := GetResigerSpiderByName("CSDN").New(user, cookie, outputDir).(*CSDNSpider)
 				spider.SetProxy(proxy)
 				if len(user) < 1 {
 					cmd.Help()

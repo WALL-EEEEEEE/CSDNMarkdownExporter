@@ -14,9 +14,23 @@ target("console")
     on_build(function (target)
       -- 导入配置模块
       import("core.project.config")
-      local releaseDir = vformat("$(projectdir)/%s/%s/%s/%s", "target", config.plat(), config.arch(), config.mode())
-      os.mkdir(releaseDir)
-      os.runv("go", {"build", "-o", releaseDir})
+      local buildDir = vformat("$(projectdir)/%s/%s/%s/%s", "target", config.plat(), config.arch(), config.mode())
+      os.mkdir(buildDir)
+      target:set("buildDir", buildDir)
+      os.runv("go", {"build", "-o", buildDir})
+
+    end)
+
+    before_run(function (target) 
+      import("core.project.target")
+      target.build("console")
+    end)
+
+    on_run(function (target) 
+      -- import("core.project.config")
+      -- local buildDir= vformat("$(projectdir)/%s/%s/%s/%s", "target", config.plat(), config.arch(), config.mode())
+      local buildDir = target.get("buildDir")
+      cprint(buildDir)
     end)
 
 target("wasm")

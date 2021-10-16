@@ -118,12 +118,35 @@ func (spider *CSDNSpider) SetProxy(proxy string) {
 		log.Panicf("Proxy url %s is invalid, caused by: %s!", proxy_url, err)
 	}
 	spider.markdown_collector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("X-Caddy-Origin-Uri", r.URL.String())
-		r.URL = proxy_url
+		r.Headers.Set("X-Caddy-Upstream-Host", r.URL.Hostname())
+		if len(r.URL.Port()) > 0 {
+			r.Headers.Set("X-Caddy-Upstream-Port", ":"+r.URL.Port())
+		} else {
+			if r.URL.Scheme == "https" {
+				r.Headers.Set("X-Caddy-Upstream-Port", ":443")
+			} else {
+				r.Headers.Set("X-Caddy-Upstream-Port", ":80")
+			}
+		}
+		r.URL.Host = proxy_url.Host
+		log.Infof("Cors代理URL：%s", r.URL.String())
+		log.Infof("Header: %+v", r.Headers)
+
 	})
 	spider.list_collector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("X-Caddy-Origin-Uri", r.URL.String())
-		r.URL = proxy_url
+		r.Headers.Set("X-Caddy-Upstream-Host", r.URL.Hostname())
+		if len(r.URL.Port()) > 0 {
+			r.Headers.Set("X-Caddy-Upstream-Port", ":"+r.URL.Port())
+		} else {
+			if r.URL.Scheme == "https" {
+				r.Headers.Set("X-Caddy-Upstream-Port", ":443")
+			} else {
+				r.Headers.Set("X-Caddy-Upstream-Port", ":80")
+			}
+		}
+		r.URL.Host = proxy_url.Host
+		log.Infof("Cors代理URL：%s", r.URL.String())
+		log.Infof("Header: %+v", r.Headers)
 	})
 }
 
