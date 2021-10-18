@@ -1,4 +1,7 @@
 set_languages("go")
+set_project("BlogExporter")
+set_xmakever("2.5.1")
+set_version("0.1", {build = "%Y%m%d%H%M"})
 
 if is_os("macosx") then
   add_requires("brew::caddy", {alias = "caddy", optional=true})
@@ -11,26 +14,23 @@ end
 target("console")
     set_kind("binary")
     add_files("main.go")
+    set_targetdir(path.join(os.projectdir(), "target"))
+    set_filename("BlogExporter")
+
     on_build(function (target)
       -- 导入配置模块
-      import("core.project.config")
-      local buildDir = vformat("$(projectdir)/%s/%s/%s/%s", "target", config.plat(), config.arch(), config.mode())
-      os.mkdir(buildDir)
-      target:set("buildDir", buildDir)
-      os.runv("go", {"build", "-o", buildDir})
-
-    end)
-
-    before_run(function (target) 
-      import("core.project.target")
-      target.build("console")
+      os.runv("go", {"build", "-o", target:targetfile()})
     end)
 
     on_run(function (target) 
-      -- import("core.project.config")
-      -- local buildDir= vformat("$(projectdir)/%s/%s/%s/%s", "target", config.plat(), config.arch(), config.mode())
-      local buildDir = target.get("buildDir")
-      cprint(buildDir)
+      cprintf("运行 %s ... \n", target:targetfile())
+      local args = os.getenv("ARGS")
+      if ( not args ) 
+      then
+          args = ""
+      end
+      args = args:split(" ")
+      os.execv(target:targetfile(), args)
     end)
 
 target("wasm")
@@ -52,8 +52,10 @@ target("wasm")
 
 target("server")
     add_deps("wasm")
-    on_run(function () 
+    on_run(function (target) 
+        import ("core.project.project")
         local web_dir = vformat("$(projectdir)/%s", "web")
         local caddy_conf = vformat("$(projectdir)/%s", "config/Caddyfile")
-        os.runv("sudo", {"caddy","run", "--config", caddy_conf})
+        cprint("运行 %s wasm.app ...", project:name())
+        os.execv("sudo", {"caddy","run", "--config", caddy_conf})
     end)

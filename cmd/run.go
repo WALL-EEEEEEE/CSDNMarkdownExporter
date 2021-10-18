@@ -36,7 +36,9 @@ var (
 				proxy, _ := cmd.Flags().GetString("proxy")
 				cookie = strings.ReplaceAll(strings.TrimSpace(cookie), "\"", "")
 				spider := GetResigerSpiderByName("CSDN").New(user, cookie, outputDir).(*CSDNSpider)
-				spider.SetProxy(proxy)
+				if len(proxy) > 1 {
+					spider.SetProxy(proxy)
+				}
 				if len(user) < 1 {
 					cmd.Help()
 					cmd.PrintErrln("\nError: user of CSDN must be specified !")

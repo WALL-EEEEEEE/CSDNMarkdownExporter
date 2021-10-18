@@ -243,11 +243,17 @@ func (spider *CSDNSpider) crawl_blog_markdown(blog *Blog) {
 
 func (spider *CSDNSpider) parse_blog_list(resp *colly.Response) {
 	user := resp.Ctx.Get("user")
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != 200 || len(resp.Body) < 1 {
 		log.Panicf("%s's blog list  can't get!", user)
 	}
 	var resp_json map[string]interface{}
 	json.Unmarshal(resp.Body, &resp_json)
+	log.Info(resp.Request.URL)
+	log.Info(resp.Request.Headers)
+	log.Info(resp)
+	log.Info(resp.Body)
+
+	log.Info(resp_json)
 	total_info, ok := resp_json["data"].(map[string]interface{})["total"]
 	if ok && (spider.blog_total == -1) {
 		spider.blog_total = int(total_info.(float64))

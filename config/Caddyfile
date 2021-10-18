@@ -8,12 +8,19 @@
 }
 localhost {
 	root * ./web
+	tls {
+		protocols tls1.2 tls1.3
+	}
 	@notStatic {
 		header X-Caddy-UpStream-Host *
 		header X-Caddy-UpStream-Port *
 	}
 	route {
 		reverse_proxy @notStatic {http.request.header.X-Caddy-UpStream-Host}{http.request.header.X-Caddy-UpStream-Port} {
+			transport http {
+				tls
+			}
+
 			header_up -X-Caddy-UpStream-Host
 			header_up -X-Caddy-UpStream-Port
 			header_up -X-Caddy-UpStream-Schema
