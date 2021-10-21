@@ -57,6 +57,7 @@ type CSDNSpider struct {
 	transport             *http.Transport
 	list_collector        *colly.Collector
 	markdown_collector    *colly.Collector
+	proxy_url             *url.URL
 }
 
 func (spider *CSDNSpider) New(spider_args ...interface{}) interface{} {
@@ -115,39 +116,27 @@ func (spider *CSDNSpider) intRange(start int, end int, step int) []int {
 func (spider *CSDNSpider) SetProxy(proxy string) {
 	proxy_url, err := url.Parse(proxy)
 	if err != nil {
-		log.Panicf("Proxy url %s is invalid, caused by: %s!", proxy_url, err)
+		log.Errorf("Proxy url %s is invalid, caused by: %s!", proxy_url, err)
+		return
 	}
-	spider.markdown_collector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("X-Caddy-Upstream-Host", r.URL.Hostname())
-		if len(r.URL.Port()) > 0 {
-			r.Headers.Set("X-Caddy-Upstream-Port", ":"+r.URL.Port())
-		} else {
-			if r.URL.Scheme == "https" {
-				r.Headers.Set("X-Caddy-Upstream-Port", ":443")
-			} else {
-				r.Headers.Set("X-Caddy-Upstream-Port", ":80")
-			}
-		}
-		r.URL.Host = proxy_url.Host
-		log.Infof("Cors代理URL：%s", r.URL.String())
-		log.Infof("Header: %+v", r.Headers)
+	spider.proxy_url = proxy_url
+}
 
-	})
-	spider.list_collector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("X-Caddy-Upstream-Host", r.URL.Hostname())
-		if len(r.URL.Port()) > 0 {
-			r.Headers.Set("X-Caddy-Upstream-Port", ":"+r.URL.Port())
+func (spider *CSDNSpider) proxy(request *http.Request) {
+	request.Header.Set("X-Caddy-Upstream-Host", request.URL.Hostname())
+	if len(request.URL.Port()) > 0 {
+		request.Header.Set("X-Caddy-Upstream-Port", ":"+request.URL.Port())
+	} else {
+		if request.URL.Scheme == "https" {
+			request.Header.Set("X-Caddy-Upstream-Port", ":443")
 		} else {
-			if r.URL.Scheme == "https" {
-				r.Headers.Set("X-Caddy-Upstream-Port", ":443")
-			} else {
-				r.Headers.Set("X-Caddy-Upstream-Port", ":80")
-			}
+			request.Header.Set("X-Caddy-Upstream-Port", ":80")
 		}
-		r.URL.Host = proxy_url.Host
-		log.Infof("Cors代理URL：%s", r.URL.String())
-		log.Infof("Header: %+v", r.Headers)
-	})
+	}
+	request.URL.Host = spider.proxy_url.Host
+	log.Infof("Cors代理URL：%s", request.URL.String())
+	log.Infof("Header: %+v", request.Header)
+
 }
 
 func (spider *CSDNSpider) createUuid() string {
@@ -237,22 +226,22 @@ func (spider *CSDNSpider) crawl_blog_markdown(blog *Blog) {
 	ctx.Put("counter", spider.blog_markdown_counter)
 	log.Infof("Crawl markdown for blog: %s  ... %d/%d ", blog.Title, spider.blog_markdown_counter, spider.blog_total)
 	log.Info(blog_markdown_req.Header)
+	spider.proxy(blog_markdown_req)
 	spider.markdown_collector.Request(blog_markdown_req.Method, blog_markdown_req.URL.String(), nil, ctx, blog_markdown_req.Header)
 	spider.blog_markdown_counter += 1
 }
 
 func (spider *CSDNSpider) parse_blog_list(resp *colly.Response) {
 	user := resp.Ctx.Get("user")
+	log.Info("Request Url: ", resp.Request.URL)
+	log.Info("Request Header: ", resp.Request.Headers)
+	log.Info("Response Header: ", resp.Headers)
+	log.Info("Response Body: ", resp.Body)
 	if resp.StatusCode != 200 || len(resp.Body) < 1 {
 		log.Panicf("%s's blog list  can't get!", user)
 	}
 	var resp_json map[string]interface{}
 	json.Unmarshal(resp.Body, &resp_json)
-	log.Info(resp.Request.URL)
-	log.Info(resp.Request.Headers)
-	log.Info(resp)
-	log.Info(resp.Body)
-
 	log.Info(resp_json)
 	total_info, ok := resp_json["data"].(map[string]interface{})["total"]
 	if ok && (spider.blog_total == -1) {
@@ -296,8 +285,14 @@ func (spider *CSDNSpider) parse_blog_list(resp *colly.Response) {
 		spider.blog_page += 1
 		total_blog_page := int(math.Ceil(float64(spider.blog_total) / blog_size))
 		blog_list_url := fmt.Sprintf(blog_list_api, spider.blog_page, user)
+		blog_list_req, err := http.NewRequest("GET", blog_list_url, nil)
+		spider.proxy(blog_list_req)
+		if err != nil {
+			log.Infof("Crawl user %s blogs ... at page %d/%d failed! (cause: %s)", user, spider.blog_page, total_blog_page, err)
+			return
+		}
 		log.Infof("Crawl user %s blogs ... at page %d/%d", user, spider.blog_page, total_blog_page)
-		spider.list_collector.Request("GET", blog_list_url, nil, resp.Ctx, nil)
+		spider.list_collector.Request(blog_list_req.Method, blog_list_req.URL.String(), blog_list_req.Body, resp.Ctx, blog_list_req.Header)
 	}
 }
 func (spider *CSDNSpider) parse_blog_list_error(resp *colly.Response, err error) {
@@ -389,11 +384,16 @@ func (spider *CSDNSpider) Crawl() {
 	context := colly.NewContext()
 	context.Put("user", spider.user)
 	context.Put("page", "1")
+	var blog_list_req, err = http.NewRequest("GET", blog_list_url, nil)
+	if err != nil {
+		log.Infof("Crawl user %s blogs ... at page %d failed (cause: %s)!", spider.user, spider.blog_page, err)
+		return
+	}
 	log.Infof("Crawl user %s blogs ... at page %d", spider.user, spider.blog_page)
-	spider.list_collector.Request("GET", blog_list_url, nil, context, nil)
+	spider.proxy(blog_list_req)
+	spider.list_collector.Request(blog_list_req.Method, blog_list_req.URL.String(), blog_list_req.Body, context, blog_list_req.Header)
 	spider.list_collector.Wait()
 	spider.markdown_collector.Wait()
-
 }
 
 func init() {
