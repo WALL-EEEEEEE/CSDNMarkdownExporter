@@ -57,6 +57,7 @@ type CSDNSpider struct {
 	transport             *http.Transport
 	list_collector        *colly.Collector
 	markdown_collector    *colly.Collector
+	proxy_url             *url.URL
 }
 
 func (spider *CSDNSpider) New(spider_args ...interface{}) interface{} {
@@ -115,39 +116,27 @@ func (spider *CSDNSpider) intRange(start int, end int, step int) []int {
 func (spider *CSDNSpider) SetProxy(proxy string) {
 	proxy_url, err := url.Parse(proxy)
 	if err != nil {
-		log.Panicf("Proxy url %s is invalid, caused by: %s!", proxy_url, err)
+		log.Errorf("Proxy url %s is invalid, caused by: %s!", proxy_url, err)
+		return
 	}
-	spider.markdown_collector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("X-Caddy-Upstream-Host", r.URL.Hostname())
-		if len(r.URL.Port()) > 0 {
-			r.Headers.Set("X-Caddy-Upstream-Port", ":"+r.URL.Port())
-		} else {
-			if r.URL.Scheme == "https" {
-				r.Headers.Set("X-Caddy-Upstream-Port", ":443")
-			} else {
-				r.Headers.Set("X-Caddy-Upstream-Port", ":80")
-			}
-		}
-		r.URL.Host = proxy_url.Host
-		log.Infof("Cors代理URL：%s", r.URL.String())
-		log.Infof("Header: %+v", r.Headers)
+	spider.proxy_url = proxy_url
+}
 
-	})
-	spider.list_collector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("X-Caddy-Upstream-Host", r.URL.Hostname())
-		if len(r.URL.Port()) > 0 {
-			r.Headers.Set("X-Caddy-Upstream-Port", ":"+r.URL.Port())
+func (spider *CSDNSpider) proxy(request *colly.Request) {
+	request.Headers.Set("X-Caddy-Upstream-Host", request.URL.Hostname())
+	if len(request.URL.Port()) > 0 {
+		request.Headers.Set("X-Caddy-Upstream-Port", ":"+request.URL.Port())
+	} else {
+		if request.URL.Scheme == "https" {
+			request.Headers.Set("X-Caddy-Upstream-Port", ":443")
 		} else {
-			if r.URL.Scheme == "https" {
-				r.Headers.Set("X-Caddy-Upstream-Port", ":443")
-			} else {
-				r.Headers.Set("X-Caddy-Upstream-Port", ":80")
-			}
+			request.Headers.Set("X-Caddy-Upstream-Port", ":80")
 		}
-		r.URL.Host = proxy_url.Host
-		log.Infof("Cors代理URL：%s", r.URL.String())
-		log.Infof("Header: %+v", r.Headers)
-	})
+	}
+	request.URL.Host = spider.proxy_url.Host
+	log.Infof("Cors代理URL：%s", request.URL.String())
+	log.Infof("Header: %+v", request.Headers)
+
 }
 
 func (spider *CSDNSpider) createUuid() string {
@@ -243,16 +232,15 @@ func (spider *CSDNSpider) crawl_blog_markdown(blog *Blog) {
 
 func (spider *CSDNSpider) parse_blog_list(resp *colly.Response) {
 	user := resp.Ctx.Get("user")
+	log.Info("Request Url: ", resp.Request.URL)
+	log.Info("Request Header: ", resp.Request.Headers)
+	log.Info("Response Header: ", resp.Headers)
+	log.Info("Response Body: ", resp.Body)
 	if resp.StatusCode != 200 || len(resp.Body) < 1 {
 		log.Panicf("%s's blog list  can't get!", user)
 	}
 	var resp_json map[string]interface{}
 	json.Unmarshal(resp.Body, &resp_json)
-	log.Info(resp.Request.URL)
-	log.Info(resp.Request.Headers)
-	log.Info(resp)
-	log.Info(resp.Body)
-
 	log.Info(resp_json)
 	total_info, ok := resp_json["data"].(map[string]interface{})["total"]
 	if ok && (spider.blog_total == -1) {

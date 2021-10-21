@@ -1,10 +1,5 @@
 {
 	debug
-	log {
-		level DEBUG
-		format console
-		output file log/caddy.log
-	}
 }
 localhost {
 	root * ./web
