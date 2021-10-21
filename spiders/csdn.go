@@ -15,6 +15,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"text/template"
 	"time"
 
 	. "github.com/duanqiaobb/BlogExporter/pkg"
@@ -24,16 +25,25 @@ import (
 )
 
 const (
-	blog_list_api          = "https://blog.csdn.net/community/home-api/v1/get-business-list?page=%d&size=20&businessType=blog&orderby=&noMore=false&username=%s"
-	blog_markdown_api      = "https://bizapi.csdn.net/blog-console-api/v3/editor/getArticle?id=%s&model_type="
-	blog_size              = 20
-	x_ca_key               = "203803574"
-	x_ca_signature_headers = "x-ca-key,x-ca-nonce"
-	encrypt_key            = "9znpamsyl2c7cdrr9sas0le9vbc3r6ba"
-	uuid_template          = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
-	signature_url_template = "GET\n%s\n\n\n\nx-ca-key:%s\nx-ca-nonce:%s\n%s"
+	blog_list_api                        = "https://blog.csdn.net/community/home-api/v1/get-business-list?page=%d&size=20&businessType=blog&orderby=&noMore=false&username=%s"
+	blog_markdown_api                    = "https://bizapi.csdn.net/blog-console-api/v3/editor/getArticle?id=%s&model_type="
+	blog_size                            = 20
+	x_ca_key                             = "203803574"
+	x_ca_signature_headers               = "x-ca-key,x-ca-nonce"
+	encrypt_key                          = "9znpamsyl2c7cdrr9sas0le9vbc3r6ba"
+	uuid_template                        = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
+	signature_url_template               = "GET\n%s\n\n\n\nx-ca-key:%s\nx-ca-nonce:%s\n%s"
+	markdown_frontmatter_template_format = `
+---
+title: "{{.Title}}"
+date: {{.CreateTime}}
+description: "{{.Desc}}"
+---
+{{.Markdown}}
+`
 )
 
+var markdown_frontmatter_template = template.Must(template.New("markdown_frontmatter").Parse(markdown_frontmatter_template_format))
 var default_header map[string]string = map[string]string{
 	"accept":                 "*/*",           //需要指定该头，不然就会报签名错误
 	"accept-encoding":        "gzip, deflate", //需要指定该头，不然就会报签名错误
@@ -66,7 +76,6 @@ func (spider *CSDNSpider) New(spider_args ...interface{}) interface{} {
 	for key, value := range default_header {
 		header.Add(key, value)
 	}
-	log.Info(cookie)
 	header.Set("cookie", cookie)
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -122,20 +131,20 @@ func (spider *CSDNSpider) SetProxy(proxy string) {
 	spider.proxy_url = proxy_url
 }
 
-func (spider *CSDNSpider) proxy(request *colly.Request) {
-	request.Headers.Set("X-Caddy-Upstream-Host", request.URL.Hostname())
+func (spider *CSDNSpider) proxy(request *http.Request) {
+	request.Header.Set("X-Caddy-Upstream-Host", request.URL.Hostname())
 	if len(request.URL.Port()) > 0 {
-		request.Headers.Set("X-Caddy-Upstream-Port", ":"+request.URL.Port())
+		request.Header.Set("X-Caddy-Upstream-Port", ":"+request.URL.Port())
 	} else {
 		if request.URL.Scheme == "https" {
-			request.Headers.Set("X-Caddy-Upstream-Port", ":443")
+			request.Header.Set("X-Caddy-Upstream-Port", ":443")
 		} else {
-			request.Headers.Set("X-Caddy-Upstream-Port", ":80")
+			request.Header.Set("X-Caddy-Upstream-Port", ":80")
 		}
 	}
 	request.URL.Host = spider.proxy_url.Host
-	log.Infof("Cors代理URL：%s", request.URL.String())
-	log.Infof("Header: %+v", request.Headers)
+	log.Debugf("Cors代理URL：%s", request.URL.String())
+	log.Debugf("Header: %+v", request.Header)
 
 }
 
@@ -225,23 +234,18 @@ func (spider *CSDNSpider) crawl_blog_markdown(blog *Blog) {
 	ctx.Put("blog", blog)
 	ctx.Put("counter", spider.blog_markdown_counter)
 	log.Infof("Crawl markdown for blog: %s  ... %d/%d ", blog.Title, spider.blog_markdown_counter, spider.blog_total)
-	log.Info(blog_markdown_req.Header)
+	spider.proxy(blog_markdown_req)
 	spider.markdown_collector.Request(blog_markdown_req.Method, blog_markdown_req.URL.String(), nil, ctx, blog_markdown_req.Header)
 	spider.blog_markdown_counter += 1
 }
 
 func (spider *CSDNSpider) parse_blog_list(resp *colly.Response) {
 	user := resp.Ctx.Get("user")
-	log.Info("Request Url: ", resp.Request.URL)
-	log.Info("Request Header: ", resp.Request.Headers)
-	log.Info("Response Header: ", resp.Headers)
-	log.Info("Response Body: ", resp.Body)
 	if resp.StatusCode != 200 || len(resp.Body) < 1 {
 		log.Panicf("%s's blog list  can't get!", user)
 	}
 	var resp_json map[string]interface{}
 	json.Unmarshal(resp.Body, &resp_json)
-	log.Info(resp_json)
 	total_info, ok := resp_json["data"].(map[string]interface{})["total"]
 	if ok && (spider.blog_total == -1) {
 		spider.blog_total = int(total_info.(float64))
@@ -284,8 +288,13 @@ func (spider *CSDNSpider) parse_blog_list(resp *colly.Response) {
 		spider.blog_page += 1
 		total_blog_page := int(math.Ceil(float64(spider.blog_total) / blog_size))
 		blog_list_url := fmt.Sprintf(blog_list_api, spider.blog_page, user)
+		blog_list_req, err := http.NewRequest("GET", blog_list_url, nil)
+		if err != nil {
+			log.Warnf("Crawl user %s blogs ... at page %d/%d failed (caused: %s) !", user, spider.blog_page, total_blog_page, err)
+			return
+		}
 		log.Infof("Crawl user %s blogs ... at page %d/%d", user, spider.blog_page, total_blog_page)
-		spider.list_collector.Request("GET", blog_list_url, nil, resp.Ctx, nil)
+		spider.list_collector.Request(blog_list_req.Method, blog_list_req.URL.String(), blog_list_req.Body, resp.Ctx, blog_list_req.Header)
 	}
 }
 func (spider *CSDNSpider) parse_blog_list_error(resp *colly.Response, err error) {
@@ -334,13 +343,13 @@ func (spider *CSDNSpider) parse_blog_markdown(resp *colly.Response) {
 		spider.blog_finished_counter += 1
 		return
 	}
-	blog_md := resp_json["data"].(map[string]interface{})["markdowncontent"].(string)
-	if len(blog_md) < 1 {
+	blog.Markdown = resp_json["data"].(map[string]interface{})["markdowncontent"].(string)
+	if len(blog.Markdown) < 1 {
 		log.Warnf("Crawl markdown article [%s] failed (cause: %s)  ... skip  %d/%d  !\n", blog.Title, "content is empty!", spider.blog_finished_counter, spider.blog_total)
 		spider.blog_finished_counter += 1
 		return
 	}
-	markdown_filename := fmt.Sprintf("[%s]-%s.md", blog.CreateTime.Format("2006-01-02"), strings.Replace(blog.Title, "/", "-", -1))
+	markdown_filename := fmt.Sprintf("%s-%s.md", blog.CreateTime.Format("2006-01-02"), strings.Replace(blog.Title, "/", "-", -1))
 	markdown_path := path.Join(spider.outputDir, markdown_filename)
 	markdown_dir := path.Dir(markdown_path)
 	_, err := os.Stat(markdown_dir)
@@ -354,14 +363,14 @@ func (spider *CSDNSpider) parse_blog_markdown(resp *colly.Response) {
 		}
 	}
 	f, err := os.Create(markdown_path)
+	defer f.Close()
 	if err != nil {
 		cause := fmt.Sprintf("Failed to create file %s (caused by: %s)!", markdown_path, err)
 		log.Errorf("Crawl markdown article [%s] failed (cause: %s)  ... skip ( %d/%d ) !\n", blog.Title, cause, spider.blog_finished_counter, spider.blog_total)
 		spider.blog_finished_counter += 1
 		return
 	}
-	defer f.Close()
-	_, err = f.WriteString(blog_md)
+	err = markdown_frontmatter_template.Execute(f, blog)
 	if err != nil {
 		cause := fmt.Sprintf("Failed to write file %s (caused by: %s)!", markdown_path, err)
 		log.Errorf("Crawl markdown article [%s] failed (cause: %s)  ... skip ( %d/%d ) !\n", blog.Title, cause, spider.blog_finished_counter, spider.blog_total)
@@ -377,8 +386,13 @@ func (spider *CSDNSpider) Crawl() {
 	context := colly.NewContext()
 	context.Put("user", spider.user)
 	context.Put("page", "1")
+	blog_list_req, err := http.NewRequest("GET", blog_list_url, nil)
+	if err != nil {
+		log.Infof("Crawl user %s blogs ... at page %d failed ! (cause: %s)", spider.user, spider.blog_page, err)
+	}
+	spider.proxy(blog_list_req)
 	log.Infof("Crawl user %s blogs ... at page %d", spider.user, spider.blog_page)
-	spider.list_collector.Request("GET", blog_list_url, nil, context, nil)
+	spider.list_collector.Request(blog_list_req.Method, blog_list_req.URL.String(), blog_list_req.Body, context, blog_list_req.Header)
 	spider.list_collector.Wait()
 	spider.markdown_collector.Wait()
 
