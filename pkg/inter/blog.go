@@ -10,4 +10,5 @@ type Blog struct {
 	Comment    int
 	Title      string
 	CreateTime time.Time
+	Markdown   string
 }
